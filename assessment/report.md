@@ -250,7 +250,7 @@ null
 
 ### Video Demonstration Link
 
-* **URL Video (3–5 Menit)**: `https://www.loom.com/share/sample-ai-interview-walkthrough` *(Ganti dengan tautan video Anda)*
+* **URL Video Walkthrough (3–5 Menit)**: `https://loom.com/share/your-walkthrough-id`
 * **Alur Demonstrasi Video**:
   1. *Menit 0:00 - 1:00*: Penjelasan problem statement, seam defect tabel Fit/Gap, dan isu unassessed skills pada UU PDP.
   2. *Menit 1:00 - 2:30*: Walkthrough UI hasil revamp: Kartu metrik Fit/Gap, indikator override manusia, badge unassessed, dan expand quote teks panjang.
@@ -268,3 +268,4 @@ Saat sesi wawancara teknik video 45–60 menit bersama CTO dan Technical Lead, p
    * Migrasi dirancang reversible (`down` script melakukan backfill aman sebelum menerapkan ulang NOT NULL).
 3. **Bagaimana strategi penskalaan streaming suara jangka panjang?**
    * Mengisolasi Puma Rails dari beban koneksi socket persisten dengan memindahkan streaming ke WebSocket proxy terdedikasi.
+

@@ -88,3 +88,4 @@ RSpec.describe Portfolios::Generator do
     end
   end
 end
+

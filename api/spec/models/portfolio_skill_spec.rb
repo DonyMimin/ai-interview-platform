@@ -67,3 +67,4 @@ RSpec.describe PortfolioSkill, type: :model do
     end
   end
 end
+

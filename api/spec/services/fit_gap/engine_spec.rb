@@ -83,3 +83,4 @@ RSpec.describe FitGap::Engine do
     end
   end
 end
+

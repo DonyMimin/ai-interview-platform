@@ -46,3 +46,4 @@ describe("Constants Mapping Consistency", () => {
     expect(FIT_GAP_RESULT_LABELS["not_assessed"]).toBe("Not assessed");
   });
 });
+
