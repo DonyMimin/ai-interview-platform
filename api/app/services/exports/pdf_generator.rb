@@ -43,6 +43,7 @@ module Exports
       pdf.move_down 4
 
       pdf.font_size(10) do
+        pdf.text "Candidate: #{@session.candidate_name.presence || 'Anonymous Candidate'}"
         pdf.text "Session: #{@session.id}"
         pdf.text "Duration: #{format_duration(@session.duration_seconds)}"
         pdf.text "Generated: #{Time.current.strftime('%Y-%m-%d %H:%M')}"
@@ -81,9 +82,15 @@ module Exports
       pdf.font_size(11) do
         pdf.text "#{skill.skill_label}", style: :bold
 
-        level_text = "Level: #{LEVEL_LABELS[effective_level]}"
-        level_text += " (AI: #{LEVEL_LABELS[skill.ai_level]} → Override: #{LEVEL_LABELS[override.override_level]})" if override
-        level_text += "  |  Confidence: #{CONFIDENCE_LABELS[skill.ai_confidence] || skill.ai_confidence}"
+        level_text = if skill.unassessed? && override.nil?
+                       "Status: Not Assessed (Skill not covered during session)"
+                     else
+                       current_lvl = effective_level ? LEVEL_LABELS[effective_level] : 'N/A'
+                       txt = "Level: #{current_lvl}"
+                       txt += " (AI: #{LEVEL_LABELS[skill.ai_level] || 'Unassessed'} → Override: #{LEVEL_LABELS[override.override_level]})" if override
+                       txt += "  |  Confidence: #{CONFIDENCE_LABELS[skill.ai_confidence] || skill.ai_confidence || 'N/A'}"
+                       txt
+                     end
         pdf.text level_text
       end
 
@@ -155,12 +162,12 @@ module Exports
     end
 
     def render_footer(pdf)
-      pdf.number_pages "Page <page> of <total>",
+      pdf.number_pages "Page <page> of <total>  •  Confidential Candidate Record (UU PDP No. 27/2022 Compliant)",
                         at:     [pdf.bounds.left, 0],
                         width:  pdf.bounds.right,
                         align:  :center,
-                        size:   9,
-                        color:  '999999'
+                        size:   8,
+                        color:  '777777'
     end
 
     def format_duration(seconds)

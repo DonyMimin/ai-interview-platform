@@ -25,8 +25,10 @@ module Portfolios
       prompt   = build_prompt
       response = @gemini_client.generate_content(prompt, temperature: 0.2)
 
-      save_skills(portfolio, response)
-      portfolio.update!(generation_status: 'complete', generated_at: Time.current)
+      ActiveRecord::Base.transaction do
+        save_skills(portfolio, response)
+        portfolio.update!(generation_status: 'complete', generated_at: Time.current)
+      end
 
       Rails.logger.info("[N10] Portfolio generated for session #{@session.id}")
       portfolio
@@ -148,32 +150,70 @@ module Portfolios
     end
 
     def save_skills(portfolio, response)
-      data = response.is_a?(Hash) ? response : JSON.parse(response)
+      data = if response.is_a?(Hash)
+               response
+             else
+               cleaned = response.to_s.strip.sub(/\A```(?:json)?\s*/i, '').sub(/\s*```\z/, '')
+               JSON.parse(cleaned)
+             end
 
       # Destroy existing skills (idempotent regeneration)
       portfolio.portfolio_skills.destroy_all
 
-      (data['configured_skills'] || []).each do |skill_data|
-        portfolio.portfolio_skills.create!(
-          skill_id:           skill_data['skill_id'],
-          skill_label:        skill_data['skill_label'],
-          is_discovered:      false,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
-          evidence:           Array(skill_data['evidence']).first(3),
-          competency_summary: skill_data['competency_summary']
-        )
+      coverage_by_label = @session.coverage_maps.index_by { |m| m.skill_label.downcase }
+      configured_from_ai = (data['configured_skills'] || []).index_by { |s| s['skill_label']&.downcase }
+
+      # 1. Process all configured skills from assessment
+      @session.assessment.assessment_skills.order(:display_order).each do |assessment_skill|
+        skill_data = configured_from_ai[assessment_skill.skill_label.downcase] || {}
+        map = coverage_by_label[assessment_skill.skill_label.downcase]
+
+        # Check if skill was unassessed: probe_count 0 or state not_yet or no level provided
+        is_unassessed = map.nil? || map.state == 'not_yet' || map.probe_count.to_i == 0 || skill_data['level'].blank?
+
+        if is_unassessed
+          portfolio.portfolio_skills.create!(
+            skill_id:           assessment_skill.skill_id,
+            skill_label:        assessment_skill.skill_label,
+            is_discovered:      false,
+            ai_level:           nil,
+            ai_confidence:      nil,
+            evidence:           [],
+            competency_summary: skill_data['competency_summary'].presence || "Skill was not covered during this interview session."
+          )
+        else
+          raw_level = skill_data['level'].to_i
+          level = raw_level.between?(1, 5) ? raw_level : 1
+          raw_conf = skill_data['confidence'].to_s.downcase.strip
+          confidence = PortfolioSkill::CONFIDENCE_LEVELS.include?(raw_conf) ? raw_conf : 'low'
+
+          portfolio.portfolio_skills.create!(
+            skill_id:           assessment_skill.skill_id || skill_data['skill_id'],
+            skill_label:        assessment_skill.skill_label,
+            is_discovered:      false,
+            ai_level:           level,
+            ai_confidence:      confidence,
+            evidence:           Array(skill_data['evidence']).first(3),
+            competency_summary: skill_data['competency_summary'].presence || "Assessed at #{confidence} confidence."
+          )
+        end
       end
 
+      # 2. Process discovered skills
       (data['discovered_skills'] || []).each do |skill_data|
+        raw_level = skill_data['level'].to_i
+        level = raw_level.between?(1, 5) ? raw_level : 1
+        raw_conf = skill_data['confidence'].to_s.downcase.strip
+        confidence = PortfolioSkill::CONFIDENCE_LEVELS.include?(raw_conf) ? raw_conf : 'low'
+
         portfolio.portfolio_skills.create!(
           skill_id:           nil,
           skill_label:        skill_data['skill_label'],
           is_discovered:      true,
-          ai_level:           skill_data['level'].to_i.clamp(1, 5),
-          ai_confidence:      skill_data['confidence'],
+          ai_level:           level,
+          ai_confidence:      confidence,
           evidence:           Array(skill_data['evidence']).first(3),
-          competency_summary: skill_data['competency_summary']
+          competency_summary: skill_data['competency_summary'].presence || "Discovered competency."
         )
       end
     end
