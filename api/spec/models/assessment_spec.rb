@@ -66,3 +66,4 @@ RSpec.describe Assessment, type: :model do
     end
   end
 end
+

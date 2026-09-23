@@ -49,3 +49,4 @@ describe("Skill Validation & Duplicate Prevention Logic", () => {
     expect(isSkillAlreadySelected("PostgreSQL", selected)).toBe(false);
   });
 });
+
