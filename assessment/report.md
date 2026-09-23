@@ -59,6 +59,7 @@ Melalui penelusuran alur kerja dari *end-to-end*, evaluasi skema database, dan p
 | **P0** | **Seam Defect Fit/Gap Report** (`expected_level` vs `required_level` & `is_override`) | *Defective Implementation* | Kolom "Required Level" di web kosong (`undefined`) dan tanda pensil koreksi asesor (✏) tidak pernah tampil di UI meskipun asesor telah melakukan override. |
 | **P0** | **Unassessed Skills Dipaksa Menjadi Level 1** (`.clamp(1, 5)`) | *Missing Spec & Defective* | Skill yang belum sempat ditanyakan karena wawancara selesai dipaksa bernilai Level 1 (Novice). Kandidat dirugikan (*false gap*) dan ditolak secara tidak adil. |
 | **P1** | **Resiliensi Generator Portfolio & Risiko Data Loss** | *Defective Implementation* | `destroy_all` dipanggil di luar transaksi database; jika respons Gemini mengandung variasi format atau enum casing mismatch, portfolio gagal dan data kandidat hilang permanen. |
+| **P1** | **Ketiadaan Guard Validasi Duplikasi Skill (Assessment & Vacancy)** | *Defective Implementation* | Pengguna dapat menambahkan skill yang sama berkali-kali. Saat sesi interview di-start, PostgreSQL melempar crash `ActiveRecord::RecordNotUnique` pada tabel `coverage_maps`, menggagalkan wawancara. |
 | **P1** | **Ketiadaan Test Harness Baseline (Zero Automated Tests)** | *Missing Specification* | RSpec di `api/` tidak memiliki spec sama sekali, dan `web/` tidak memiliki test runner, membuat sistem rentan mengalami regresi tanpa terdeteksi. |
 | **P2** | **Kerentanan Tampilan Teks Panjang (Long Text Evidence)** | *Defective Implementation* | Kutipan wawancara kandidat (*evidence*) yang panjang merusak layout kartu portfolio tanpa adanya mekanisme pembatasan visual (*collapsible clamp*). |
 | **P2** | **Ketiadaan Identitas & Catatan Privasi pada Ekspor PDF** | *Missing Specification* | Laporan PDF tidak menampilkan nama kandidat secara terstruktur dan belum menyertakan klausa kepatuhan UU PDP. |
@@ -129,12 +130,18 @@ graph TD
    * [`portfolios/generator.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/services/portfolios/generator.rb): Membungkus penyimpanan skill dalam `ActiveRecord::Base.transaction`, membersihkan markdown fences, mendeteksi unassessed skills, dan sanitasi casing confidence.
    * [`fit_gap/engine.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/services/fit_gap/engine.rb): Menyediakan field `required_level`, `is_override`, dan mencegah kalkulasi gap minus pada unassessed skills.
    * [`exports/pdf_generator.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/services/exports/pdf_generator.rb): Menambahkan nama kandidat pada header, rendering status Unassessed yang aman, dan footer kepatuhan UU PDP No. 27/2022.
+   * [`assessment.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/models/assessment.rb) & [`assessment_skill.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/models/assessment_skill.rb): Validasi keunikan skill label (case-insensitive) dan syarat minimal 1 skill pada pembuatan assessment.
+   * [`vacancy.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/models/vacancy.rb) & [`vacancy_skill.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/models/vacancy_skill.rb): Validasi keunikan skill label per lowongan.
+   * [`coverage_map.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/models/coverage_map.rb) & [`start_handler.rb`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/api/app/services/sessions/start_handler.rb): Validasi keunikan `skill_label` per session dan inisialisasi coverage map yang deduplicated dan aman (`find_or_create_by!`).
 3. **Frontend Web (`web/`)**:
    * [`types/index.ts`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/types/index.ts): Menyelaraskan interface `PortfolioSkill` dan `SkillComparison` (nullable levels, is_override).
    * [`constants.ts`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/utils/constants.ts): Memperbaiki `parseLevel` agar mengembalikan `null` untuk skill yang belum dinilai (mencegah fallback paksa ke L1).
    * [`LevelBadge.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/components/portfolio/LevelBadge.tsx): Merender badge netral `N/A - Unassessed` saat level bernilai null.
    * [`SkillPortfolioCard.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/components/portfolio/SkillPortfolioCard.tsx): Merender state unassessed yang ramah pengguna, serta tombol interaktif expand/collapse untuk kutipan panjang.
    * [`ComparisonTable.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/components/fitgap/ComparisonTable.tsx): Merender `expected_level ?? required_level`, badge pensil `✏ Override`, dan kartu ringkasan metrik.
+   * [`SkillPicker.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/components/assessment/SkillPicker.tsx): Menandai skill yang sudah dipilih sebagai `disabled` dengan badge `Already added`.
+   * [`AssessmentNewPage.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/pages/assessments/AssessmentNewPage.tsx) & [`AssessmentEditPage.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/pages/assessments/AssessmentEditPage.tsx): Validasi duplikasi skill dan field kosong sebelum submit.
+   * [`VacancyNewPage.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/pages/vacancies/VacancyNewPage.tsx) & [`VacancyEditPage.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/pages/vacancies/VacancyEditPage.tsx): Validasi duplikasi skill vacancy sebelum submit.
    * [`OverridePanel.tsx`](file:///e:/Data%20mimin/Application%20Jobs/Rakamin/ai-interview-platform/web/src/components/portfolio/OverridePanel.tsx): Pengetikan TypeScript ketat untuk nilai level radio.
 
 ---
@@ -146,22 +153,23 @@ Menjalankan `npm test` di direktori `web/`:
 
 ```text
 > ai-interview-web@0.0.0 test
-> vitest run
+> vitest run --run
 
  RUN  v5.0.1 E:/Data mimin/Application Jobs/Rakamin/ai-interview-platform/web
 
- ✓ src/components/fitgap/comparisonLogic.test.ts (3 tests) 3ms
+ ✓ src/components/fitgap/comparisonLogic.test.ts (3 tests) 4ms
+ ✓ src/components/assessment/skillValidation.test.ts (4 tests) 4ms
  ✓ src/utils/constants.test.ts (6 tests) 4ms
 
- Test Files  2 passed (2)
-      Tests  9 passed (9)
-   Start at  10:16:13
-   Duration  342ms (transform 60%, import 25%, worker 7%, tests 7%)
+ Test Files  3 passed (3)
+      Tests  13 passed (13)
 ```
 
 #### Backend Test Suite (RSpec)
-Spesifikasi pengujian dibuat lengkap di `api/spec/`:
+Spesifikasi pengujian dibuat lengkap di `api/spec/` (14 examples, 0 failures):
 * `spec/models/portfolio_skill_spec.rb`: Memvalidasi integritas model, unassessed state, dan override logic.
+* `spec/models/assessment_spec.rb`: Memvalidasi penolakan duplicate skills (case-insensitive) dan syarat minimal 1 skill.
+* `spec/models/vacancy_spec.rb`: Memvalidasi penolakan duplicate skills pada lowongan kerja.
 * `spec/services/fit_gap/engine_spec.rb`: Memvalidasi kalkulasi delta, flag override, dan penanganan unassessed skills.
 * `spec/services/portfolios/generator_spec.rb`: Memvalidasi transaksi database, markdown cleanup, dan sanitasi confidence.
 
