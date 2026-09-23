@@ -1,7 +1,7 @@
 # Case Study Report: Fullstack Product Engineer
 ## Monozukuri Revamp: AI Interview Platform
 
-**Candidate / Author**: Fullstack Product Engineer Applicant  
+**Candidate / Author**: Dony (dony.minmin@gmail.com)  
 **Target Repository**: [github.com/rakamindev/ai-interview-platform](https://github.com/rakamindev/ai-interview-platform)  
 **Branch**: `feat/monozukuri-revamp`  
 **PR Submission**: [Link to Open Pull Request](https://github.com/rakamindev/ai-interview-platform/pull/new/feat/monozukuri-revamp)  
