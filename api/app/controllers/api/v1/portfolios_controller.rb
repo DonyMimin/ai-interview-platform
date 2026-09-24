@@ -92,9 +92,15 @@ module Api
         end
 
         FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: vacancy.id)&.destroy
-        FitGapGeneratorWorker.perform_async(portfolio.id, vacancy.id)
 
-        render json: { status: "generating", message: "Fit/gap report regeneration queued" }, status: :accepted
+        has_workers = defined?(Sidekiq::ProcessSet) && (Sidekiq::ProcessSet.new.size > 0 rescue false)
+        if has_workers
+          FitGapGeneratorWorker.perform_async(portfolio.id, vacancy.id)
+          render json: { status: "generating", message: "Fit/gap report regeneration queued" }, status: :accepted
+        else
+          report = FitGap::Engine.new(portfolio: portfolio, vacancy: vacancy).call
+          json_response(report: fit_gap_json(report))
+        end
       rescue ActiveRecord::RecordNotFound
         json_error("Portfolio not found", :not_found)
       end
@@ -119,8 +125,14 @@ module Api
           return json_response(report: fit_gap_json(existing))
         end
 
-        FitGapGeneratorWorker.perform_async(portfolio.id, vacancy.id)
-        render json: { status: "generating", message: "Fit/gap report generation queued" }, status: :accepted
+        has_workers = defined?(Sidekiq::ProcessSet) && (Sidekiq::ProcessSet.new.size > 0 rescue false)
+        if has_workers
+          FitGapGeneratorWorker.perform_async(portfolio.id, vacancy.id)
+          render json: { status: "generating", message: "Fit/gap report generation queued" }, status: :accepted
+        else
+          report = FitGap::Engine.new(portfolio: portfolio, vacancy: vacancy).call
+          json_response(report: fit_gap_json(report))
+        end
       rescue ActiveRecord::RecordNotFound
         json_error("Portfolio not found", :not_found)
       end
@@ -131,6 +143,11 @@ module Api
         report    = FitGapReport.find_by(portfolio_id: portfolio.id, vacancy_id: params[:vacancy_id])
 
         if report.nil?
+          vacancy = Vacancy.find_by(id: params[:vacancy_id])
+          if vacancy && portfolio.complete?
+            report = FitGap::Engine.new(portfolio: portfolio, vacancy: vacancy).call
+            return json_response(report: fit_gap_json(report))
+          end
           return json_error("Fit/gap report not found", :not_found)
         end
 
