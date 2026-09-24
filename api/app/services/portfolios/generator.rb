@@ -7,8 +7,9 @@ module Portfolios
   class Generator
     def initialize(session:, gemini_client: nil)
       @session = session
+      model = ENV['GEMINI_PRO_MODEL'].presence || ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-3.6-flash')
       @gemini_client = gemini_client || Gemini::HttpClient.new(
-        model:   ENV.fetch('GEMINI_PRO_MODEL', 'gemini-2.0-pro-001'),
+        model:   model,
         timeout: 180  # up to 3 minutes for large transcripts
       )
     end
@@ -23,11 +24,11 @@ module Portfolios
       portfolio.update!(generation_status: 'generating')
 
       prompt   = build_prompt
-      response = @gemini_client.generate_content(prompt, temperature: 0.2)
+      response = generate_with_fallback(prompt)
 
       ActiveRecord::Base.transaction do
         save_skills(portfolio, response)
-        portfolio.update!(generation_status: 'complete', generated_at: Time.current)
+        portfolio.update!(generation_status: 'complete', generated_at: Time.current, generation_error: nil)
       end
 
       Rails.logger.info("[N10] Portfolio generated for session #{@session.id}")
@@ -39,6 +40,25 @@ module Portfolios
     end
 
     private
+
+    def generate_with_fallback(prompt)
+      initial_model = @gemini_client.instance_variable_get(:@model)
+      models_to_try = [initial_model, ENV['GEMINI_FLASH_MODEL'], 'gemini-3.6-flash', 'gemini-flash-latest'].compact.uniq
+
+      last_error = nil
+      models_to_try.each_with_index do |model_name, idx|
+        client = (idx == 0) ? @gemini_client : Gemini::HttpClient.new(model: model_name, timeout: 180)
+        begin
+          return client.generate_content(prompt, temperature: 0.2)
+        rescue Gemini::HttpClient::RateLimitError, Gemini::HttpClient::ApiError => e
+          last_error = e
+          Rails.logger.warn("[N10] Model #{model_name} failed (#{e.message}), trying next fallback...")
+          sleep 1 if idx < models_to_try.length - 1
+        end
+      end
+
+      raise last_error if last_error
+    end
 
     def build_prompt
       assessment       = @session.assessment

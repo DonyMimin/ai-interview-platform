@@ -113,7 +113,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_09_23_000000) do
     t.string "skill_label", limit: 255, null: false
     t.boolean "is_discovered", default: false, null: false
     t.integer "ai_level"
-    t.enum "ai_confidence", enum_type: "confidence_level"
+    t.enum "ai_confidence", null: false, enum_type: "confidence_level"
     t.jsonb "evidence", default: [], null: false
     t.text "competency_summary", null: false
     t.index ["portfolio_id"], name: "index_portfolio_skills_on_portfolio_id"
