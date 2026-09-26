@@ -112,9 +112,15 @@ graph TD
    * Seluruh regenerasi skill portfolio dibungkus dalam `ActiveRecord::Base.transaction`.
    * Parser JSON membersihkan markdown code fences (````json ... ````) secara otomatis.
    * Input casing `confidence` disanitasi (`downcase`) dan divalidasi terhadap whitelist enum.
-4. **UI/UX Polishing**:
+4. **UI/UX Polishing (Craftsmanship Monozukuri)**:
    * Kutipan evidence wawancara yang panjang (>180 karakter) dibatasi dan dilengkapi tombol interaktif **Show full quote / Show less**.
    * Kartu ringkasan metrik (Matches, Exceeds, Gaps, Not Assessed) disajikan di atas tabel Fit/Gap.
+   * Quick Demo Credentials helper satu klik di halaman login (`/login`) untuk kemudahan evaluator.
+5. **Dynamic Vacancy & Portfolio Decoupling (Future-Proof Fit/Gap)**:
+   * Menjamin portofolio kandidat yang sudah selesai wawancara tetap kompatibel ketika dicocokkan dengan lowongan baru (*new vacancy*) atau lowongan yang mengalami penambahan skill di kemudian hari.
+   * Skill baru yang tidak terdapat dalam riwayat wawancara kandidat otomatis diklasifikasikan sebagai `not_assessed` (delta `-`), mencegah terjadinya *false gap* atau runtime error.
+6. **Defensive Constraint & Duplicate Skill Prevention**:
+   * Mencegah penambahan skill duplikat pada form Assessment dan Vacancy secara berlapis: disable pada modal `SkillPicker`, validasi form frontend, model validation di backend, serta inisialisasi idempotent pada `Sessions::StartHandler` guna melindungi constraint unik PostgreSQL `coverage_maps`.
 
 ---
 
@@ -259,11 +265,13 @@ null
 ### Video Demonstration Link
 
 * **URL Video Walkthrough (3–5 Menit)**: `https://loom.com/share/your-walkthrough-id`
-* **Alur Demonstrasi Video**:
-  1. *Menit 0:00 - 1:00*: Penjelasan problem statement, seam defect tabel Fit/Gap, dan isu unassessed skills pada UU PDP.
-  2. *Menit 1:00 - 2:30*: Walkthrough UI hasil revamp: Kartu metrik Fit/Gap, indikator override manusia, badge unassessed, dan expand quote teks panjang.
-  3. *Menit 2:30 - 3:30*: Demonstrasi keandalan teknis: Ekspor PDF dengan nama kandidat & klausa UU PDP, serta eksekusi test suite otomatis.
-  4. *Menit 3:30 - 4:30*: Pembuktian *Seeded Fault Test* (bagaimana tes mendeteksi regresi) dan refleksi keputusan arsitektur untuk sesi Live Defense.
+* **Alur Demonstrasi Video (3.5 – 4.5 Menit)**:
+  1. *Menit 0:00 - 0:45*: Pembukaan & problem statement (seam defect tabel Fit/Gap, isu unassessed skills pada UU PDP No. 27/2022).
+  2. *Menit 0:45 - 01:50*: Walkthrough UI hasil revamp: Kolom Required Level presisi, badge pensil `✏ Override`, dan badge netral `N/A - Unassessed`.
+  3. *Menit 01:50 - 02:45*: Inisiatif fitur mandiri Monozukuri: Collapsible quotes (>180 chars), Metric summary cards, dan Quick Demo credentials helper.
+  4. *Menit 02:45 - 03:35*: Hardening validasi duplikasi skill di frontend picker & backend model, serta idempotency start handler penangkal crash PostgreSQL unique constraint.
+  5. *Menit 03:35 - 04:20*: Eksekusi test suite otomatis (13 Vitest & 14 RSpec tests passing 100%) dan pembuktian *Seeded Fault Test* (RED ke GREEN).
+  6. *Menit 04:20 - 04:45*: Penutup, ringkasan kesiapan rilis produksi, dan komitmen keadilan kandidat.
 
 ---
 
@@ -272,8 +280,14 @@ null
 Saat sesi wawancara teknik video 45–60 menit bersama CTO dan Technical Lead, poin-poin berikut siap dipertahankan:
 1. **Mengapa memilih nullable `ai_level` daripada menambahkan tabel baru?**
    * Migrasi lebih hemat komputasi, backward compatible dengan baris yang sudah ada, dan secara semantik selaras dengan enum `not_assessed` yang sudah ada di tabel `fit_gap_reports`.
-2. **Bagaimana mitigasi downtime saat migrasi database?**
+2. **Bagaimana jika lowongan kerja baru dibuka atau skill lowongan bertambah setelah kandidat selesai wawancara?**
+   * Arsitektur `FitGap::Engine` memisahkan secara bersih antara portofolio permanen kandidat dan tolok ukur lowongan yang dinamis. Skill baru yang tidak pernah diujikan pada sesi wawancara kandidat otomatis diklasifikasikan sebagai `not_assessed` dengan delta `-` (null-safe), sehingga kandidat tidak terkena penalti minus (*false gap*) dan sistem tidak crash. Asesor manusia tetap memiliki hak prerogatif melakukan *Human-in-the-loop Override (✏)* jika di CV kandidat tertera bukti relevan.
+3. **Bagaimana mitigasi duplikasi skill dan fatal crash pada tabel `coverage_maps`?**
+   * Kami menerapkan pertahanan berlapis (*defense-in-depth*): UI menonaktifkan skill yang sudah dipilih dengan badge `Already added`, validasi form frontend menolak duplikasi nama skill, model Rails `Assessment` dan `AssessmentSkill` menerapkan validasi keunikan case-insensitive, dan `Sessions::StartHandler` melakukan deduplikasi label serta inisialisasi idempotent (`find_or_create_by!`).
+4. **Mengapa penghapusan asesmen dibatasi dengan `restrict_with_error`?**
+   * Di platform rekrutmen enterprise, asesmen yang sudah memiliki riwayat sesi wawancara kandidat tidak boleh di-hard delete demi kepatuhan *audit trail* dan perlindungan hak data kandidat sesuai UU PDP No. 27/2022.
+5. **Bagaimana mitigasi downtime saat migrasi database?**
    * Migrasi dirancang reversible (`down` script melakukan backfill aman sebelum menerapkan ulang NOT NULL).
-3. **Bagaimana strategi penskalaan streaming suara jangka panjang?**
-   * Mengisolasi Puma Rails dari beban koneksi socket persisten dengan memindahkan streaming ke WebSocket proxy terdedikasi.
+6. **Bagaimana strategi penskalaan streaming suara jangka panjang?**
+   * Mengisolasi Puma Rails dari beban koneksi socket persisten dengan memindahkan streaming ke WebSocket proxy terdedikasi (misal: Go/Node.js audio gateway).
 
